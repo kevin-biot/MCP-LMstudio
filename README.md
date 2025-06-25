@@ -23,9 +23,9 @@ Coming soon - custom servers optimized for local LLM workflows.
 ## 🚀 Quick Start
 
 ### Prerequisites
-- Node.js 18+ or Python 3.8+
-- npm or pnpm for JavaScript servers
-- pip for Python servers
+- **LM Studio**: Version 0.2.0 or higher with MCP support
+- **Node.js**: Version 18+ 
+- **npm or pnpm**: For package management
 
 ### Installation
 
@@ -47,14 +47,147 @@ pnpm install
 npm run build
 ```
 
-### Usage with LM Studio
+## ⚙️ LM Studio Configuration
 
-1. Start an MCP server:
+### Method 1: HTTP Server Configuration (Recommended)
+
+Start the MCP servers in HTTP mode and configure LM Studio to connect:
+
+#### 1. Start MCP Server with HTTP Transport
 ```bash
-node build/src/filesystem/index.js
+# Start filesystem server on HTTP
+npm run start:filesystem -- --transport=http --port=8080
+
+# Or start multiple servers on different ports
+npm run start:fetch -- --transport=http --port=8081
+npm run start:memory -- --transport=http --port=8082
 ```
 
-2. Configure LM Studio to connect to the MCP server (detailed instructions coming soon)
+#### 2. Configure LM Studio
+Add this configuration to your LM Studio settings:
+
+**File**: LM Studio Settings → Model Context Protocol
+
+```json
+{
+  "mcpServers": {
+    "filesystem-http": {
+      "url": "http://localhost:8080/mcp"
+    },
+    "fetch-http": {
+      "url": "http://localhost:8081/mcp"
+    },
+    "memory-http": {
+      "url": "http://localhost:8082/mcp"
+    }
+  }
+}
+```
+
+### Method 2: Stdio Configuration
+
+For direct stdio communication (advanced users):
+
+```json
+{
+  "mcpServers": {
+    "filesystem": {
+      "command": "node",
+      "args": ["/path/to/MCP-LMstudio/build/src/filesystem/index.js"],
+      "env": {
+        "MCP_ALLOWED_DIRS": "/safe/directory/path"
+      }
+    },
+    "fetch": {
+      "command": "node",
+      "args": ["/path/to/MCP-LMstudio/build/src/fetch/index.js"]
+    },
+    "memory": {
+      "command": "node", 
+      "args": ["/path/to/MCP-LMstudio/build/src/memory/index.js"],
+      "env": {
+        "MCP_MEMORY_DIR": "/path/to/memory/storage"
+      }
+    }
+  }
+}
+```
+
+### Method 3: Docker Configuration
+
+Run servers in Docker containers:
+
+```bash
+# Build Docker image
+docker build -t mcp-lmstudio .
+
+# Run individual servers
+docker run -d -p 8080:3000 --name mcp-filesystem mcp-lmstudio node build/src/filesystem/index.js
+docker run -d -p 8081:3000 --name mcp-fetch mcp-lmstudio node build/src/fetch/index.js
+docker run -d -p 8082:3000 --name mcp-memory mcp-lmstudio node build/src/memory/index.js
+```
+
+Then configure LM Studio with Docker URLs:
+```json
+{
+  "mcpServers": {
+    "filesystem-docker": {
+      "url": "http://localhost:8080/mcp"
+    },
+    "fetch-docker": {
+      "url": "http://localhost:8081/mcp"
+    },
+    "memory-docker": {
+      "url": "http://localhost:8082/mcp"
+    }
+  }
+}
+```
+
+### Server-Specific Configuration
+
+#### Filesystem Server
+```json
+{
+  "filesystem": {
+    "url": "http://localhost:8080/mcp",
+    "env": {
+      "MCP_ALLOWED_DIRS": "/home/user/documents,/home/user/projects",
+      "MCP_READ_ONLY": "false"
+    }
+  }
+}
+```
+
+#### Memory Server
+```json
+{
+  "memory": {
+    "url": "http://localhost:8082/mcp",
+    "env": {
+      "MCP_MEMORY_DIR": "/home/user/.mcp-memory",
+      "MCP_MAX_ENTITIES": "10000"
+    }
+  }
+}
+```
+
+### Testing Your Configuration
+
+1. **Start the servers:**
+```bash
+npm run start:filesystem -- --transport=http --port=8080
+```
+
+2. **Test with MCP Inspector:**
+```bash
+npm run inspector:filesystem
+```
+
+3. **Verify in LM Studio:**
+   - Open LM Studio
+   - Load a compatible model
+   - Try commands like: "List files in my documents folder"
 
 ## 🧪 Testing
 
@@ -84,11 +217,17 @@ node build/src/filesystem/index.js
 npx @modelcontextprotocol/inspector node build/src/filesystem/index.js
 ```
 
+### Server Startup Testing
+```bash
+# Test all servers startup
+./scripts/test-and-dev.sh test-servers
+```
+
 ## 📖 Documentation
 
 - [Model Context Protocol Documentation](https://modelcontextprotocol.io/)
-- [LM Studio Integration Guide](docs/lmstudio-integration.md) (coming soon)
-- [Server Development Guide](docs/development.md) (coming soon)
+- [LM Studio Integration Guide](docs/lmstudio-integration.md)
+- [Server Development Guide](docs/development.md)
 
 ## 🛠️ Development
 
@@ -135,6 +274,25 @@ npm run format
 - Add documentation for new features
 - Include tests for new functionality
 
+## 🚨 Troubleshooting
+
+### Common Issues
+
+**Server won't start:**
+- Check Node.js version: `node --version` (should be 18+)
+- Rebuild the project: `npm run build`
+- Check port availability: `lsof -i :8080`
+
+**LM Studio can't connect:**
+- Verify server is running: `curl http://localhost:8080/mcp`
+- Check firewall settings
+- Ensure correct URL in LM Studio config
+
+**Permission errors (filesystem server):**
+- Verify `MCP_ALLOWED_DIRS` configuration
+- Check directory permissions
+- Run with appropriate user permissions
+
 ## 📝 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
@@ -155,11 +313,13 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 This project is under active development. Features and APIs may change.
 
 ### Roadmap
-- [ ] LM Studio integration documentation
+- [x] LM Studio integration documentation  
+- [x] HTTP transport support for easy integration
+- [x] Docker containerization
 - [ ] Custom servers for local LLM workflows
 - [ ] Performance optimizations for local models
-- [ ] Docker containerization
 - [ ] Web interface for server management
+- [ ] Authentication and security enhancements
 
 ---
 
