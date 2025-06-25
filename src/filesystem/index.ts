@@ -2,6 +2,8 @@
 
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import express from 'express';
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import {
   CallToolRequestSchema,
   ListToolsRequestSchema,
@@ -17,8 +19,19 @@ import { minimatch } from 'minimatch';
 
 // Command line argument parsing
 const args = process.argv.slice(2);
-if (args.length === 0) {
-  console.error("Usage: mcp-server-filesystem <allowed-directory> [additional-directories...]");
+
+// Check for HTTP mode flag
+const httpMode = args.includes('--http');
+const portArg = args.find(arg => arg.startsWith('--port='));
+const port = portArg ? parseInt(portArg.split('=')[1]) : 8080;
+
+// Filter out flags to get directory arguments
+const directoryArgs = args.filter(arg => !arg.startsWith('--'));
+
+if (directoryArgs.length === 0) {
+  console.error("Usage: mcp-server-filesystem [--http] [--port=8080] <allowed-directory> [additional-directories...]");
+  console.error("  --http: Run in HTTP mode (default: stdio)");
+  console.error("  --port: Port for HTTP mode (default: 8080)");
   process.exit(1);
 }
 
@@ -35,12 +48,12 @@ function expandHome(filepath: string): string {
 }
 
 // Store allowed directories in normalized form
-const allowedDirectories = args.map(dir =>
+const allowedDirectories = directoryArgs.map(dir =>
   normalizePath(path.resolve(expandHome(dir)))
 );
 
 // Validate that all directories exist and are accessible
-await Promise.all(args.map(async (dir) => {
+await Promise.all(directoryArgs.map(async (dir) => {
   try {
     const stats = await fs.stat(expandHome(dir));
     if (!stats.isDirectory()) {
@@ -841,10 +854,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Start server
 async function runServer() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
-  console.error("Secure MCP Filesystem Server running on stdio");
-  console.error("Allowed directories:", allowedDirectories);
+  if (httpMode) {
+    // HTTP mode
+    const app = express();
+    app.use(express.json());
+    
+    // Store active transports
+    const transports = new Map<string, StreamableHTTPServerTransport>();
+    
+    // Handle MCP requests
+    app.all('/mcp', async (req, res) => {
+      try {
+        const sessionId = req.headers['mcp-session-id'] as string || 'default';
+        
+        if (!transports.has(sessionId)) {
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined // Stateless mode
+          });
+          transports.set(sessionId, transport);
+          await server.connect(transport);
+        }
+        
+        const transport = transports.get(sessionId)!;
+        await transport.handleRequest(req, res, req.body);
+      } catch (error) {
+        console.error('Error handling MCP request:', error);
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    });
+    
+    app.listen(port, () => {
+      console.error(`Secure MCP Filesystem Server running on http://localhost:${port}/mcp`);
+      console.error("Allowed directories:", allowedDirectories);
+    });
+  } else {
+    // Stdio mode (original)
+    const transport = new StdioServerTransport();
+    await server.connect(transport);
+    console.error("Secure MCP Filesystem Server running on stdio");
+    console.error("Allowed directories:", allowedDirectories);
+  }
 }
 
 runServer().catch((error) => {

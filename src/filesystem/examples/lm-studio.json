@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "filesystem-http": {
+      "url": "http://localhost:8080/mcp",
+      "transport": "http",
+      "description": "HTTP filesystem server for development directories"
+    }
+  }
+}
